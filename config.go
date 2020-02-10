@@ -1,10 +1,12 @@
 package widecfg
 
 import (
-	"errors"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 var (
@@ -12,12 +14,24 @@ var (
 	ErrValueWrongType = errors.New("value with wrong type")
 )
 
-type Config map[string]interface{}
+// ConfigMap is a string to interface{} map that implements the Getter interface.
+type ConfigMap map[string]interface{}
+
+type Config struct {
+	Getter
+	TimeFormat string
+}
+
+func NewConfig(getter Getter) *Config {
+	return &Config{
+		Getter:     getter,
+		TimeFormat: DefaultTimeFormat,
+	}
+}
 
 var DefaultTimeFormat = time.RFC3339
 
-// Get will find a given `key` into the Config.
-func (c *Config) Get(key string) (interface{}, bool) {
+func (c *ConfigMap) Get(key string) (interface{}, bool) {
 	props := strings.Split(key, ".")
 	value := (*c)
 	for _, propName := range props {
@@ -28,12 +42,19 @@ func (c *Config) Get(key string) (interface{}, bool) {
 		switch propValueTyped := propValue.(type) {
 		case map[string]interface{}:
 			value = propValueTyped
+		case ConfigMap:
+			value = propValueTyped
 		default:
 			return propValueTyped, true
 		}
 	}
 	// Could not find the Config.
 	return nil, false
+}
+
+// Get will find a given `key` into the Config.
+func (c *Config) Get(key string) (interface{}, bool) {
+	return c.Getter.Get(key)
 }
 
 func (c *Config) GetString(key string) (string, error) {
@@ -61,6 +82,14 @@ func (c *Config) GetInt(key string) (int, error) {
 		return typedValue, nil
 	case *int:
 		return *typedValue, nil
+	case int64:
+		return int(typedValue), nil
+	case *int64:
+		return int(*typedValue), nil
+	case float64:
+		return int(typedValue), nil
+	case *float64:
+		return int(*typedValue), nil
 	case string:
 		return strconv.Atoi(typedValue)
 	case *string:
@@ -188,7 +217,7 @@ func (c *Config) GetBool(key string) (bool, error) {
 	case *string:
 		return strconv.ParseBool(*typedValue)
 	default:
-		return false, ErrValueWrongType
+		return false, errors.Wrapf(ErrValueWrongType, "unexpected '%s'", reflect.TypeOf(value))
 	}
 }
 
@@ -203,9 +232,9 @@ func (c *Config) GetTime(key string) (time.Time, error) {
 	case *time.Time:
 		return *typedValue, nil
 	case string:
-		return time.Parse(DefaultTimeFormat, typedValue)
+		return time.Parse(c.TimeFormat, typedValue)
 	case *string:
-		return time.Parse(DefaultTimeFormat, *typedValue)
+		return time.Parse(c.TimeFormat, *typedValue)
 	default:
 		return time.Time{}, ErrValueWrongType
 	}
