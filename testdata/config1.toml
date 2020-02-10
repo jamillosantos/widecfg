@@ -1,0 +1,4 @@
+prop1 = "this is a test"
+prop2 = 1
+[prop3]
+prop4 = true
